@@ -135,7 +135,7 @@ int main(){
         case CTRL:
 
           PORTB |= (1 << LED_GREEN_B);
-          // if( (clock_ms() - timer) > 50 ){
+          if( (clock_ms() - timer) > 50 ){
             timer = clock_ms();
             duty_MOTOR += 50;
             duty_LED   -= 50;
