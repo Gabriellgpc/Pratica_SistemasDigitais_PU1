@@ -155,7 +155,7 @@ int main(){
             usart_transmision(T/10+48);
             usart_transmision(T%10+48);
             usart_transmision('\n');
-          // }
+           }
 
         break;
         default:
