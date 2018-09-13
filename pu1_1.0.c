@@ -1,5 +1,6 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <util/delay.h>
 
 #define F_CPU 16000000UL // 16 MHz, clock_ms externo, define necessario para usar delay corretamente
 #define OVF_T0_1_ms (F_CPU/(1000UL*256))
@@ -9,8 +10,8 @@
 #define DHT_PIN PC0
 #define THERMISTOR PC1   //A1
 
-#define LED_YELLOW_D PD6
-#define LED_BLUE_D PD5
+#define LED_YELLOW_D PD3
+#define LED_BLUE_D PB3
 #define BUTTON_D PD2
 #define LED_GREEN_B PB0
 // Motor no pino  PB3 (pino 11 do arduino)
@@ -28,7 +29,7 @@ volatile uint8_t state = INIT;
 volatile bool bounce_aux = false;
 uint64_t t_first_edge = 0;
 //#######################################
-enum PWM_CHANNEL {
+enum PWM_CHANNEL{
   //Canal por nome
   CHAN_MOTOR = 0b00000001,
   CHAN_LED   = 1 << 2,
@@ -50,11 +51,11 @@ void usart_transmisionString(uint8_t *data);
 uint8_t usart_reception();
 void usart_flush();
 
-void pwm_initialize () {
+void pwm_initialize(){
   // Definir o modo de operação para FastPWM
   TCCR2A |= (1 << WGM20 | 1 << WGM21);
 
-  // Definir a fonte do relógio (prescaler)
+  // Definir a fonte do clk (sem prescaler)
   TCCR2B |= (1 << CS21);
 
   // Definido para 0% do ciclo de trabalho
@@ -85,6 +86,7 @@ void setup(){
   DDRB |= 1 << LED_GREEN_B; //configura LED_GREEN_B como saida
   DDRD &= !(1 << BUTTON_D); //configura BUTTON_D como entrada
   DDRC |= 1 << DHT_PIN;
+
 
   PORTC|= !(1 << DHT_PIN);
   PORTB&= !(1 << LED_GREEN_B);
@@ -118,7 +120,8 @@ int main(){
   // index 1 => Humidade %, parte decimal
   uint8_t dht_data[5];
   dht_data[0] = 99;
-  uint64_t timer = 0;
+  uint64_t start_timer;
+  uint64_t timer;
   uint8_t duty_MOTOR = 0, duty_LED = 255;
   uint8_t T;
   while(true){
@@ -128,34 +131,71 @@ int main(){
           duty_MOTOR = 0;
           duty_LED = 255;
           PORTB &= ~(1 << LED_GREEN_B);
-          pwm_dutycycle(CHAN_LED,duty_LED);
-          pwm_dutycycle(CHAN_MOTOR,duty_MOTOR);
-
+          pwm_dutycycle(CHAN_LED,0);
+          pwm_dutycycle(CHAN_MOTOR,0);
+          start_timer = clock_ms();
         break;
         case CTRL:
-
           PORTB |= (1 << LED_GREEN_B);
-          if( (clock_ms() - timer) > 50 ){
-            timer = clock_ms();
-            duty_MOTOR += 50;
-            duty_LED   -= 50;
-            pwm_dutycycle(CHAN_MOTOR, duty_MOTOR);
-            pwm_dutycycle(CHAN_LED, duty_LED);
+          timer = clock_ms() - start_timer;
+          readDHT(dht_data);
+          T = readTherm();
 
-            readDHT(dht_data);
-            T = readTherm();
+          if( timer < 10000){
+            //comportamento 1
+            duty_MOTOR = 0.1*256;
+            duty_LED = 0.9*256;
+          }else if(timer > 10000 && timer < 15000){
+            //comportamento 2
+            duty_MOTOR = 0.4*256;
+            duty_LED = 0.6*256;
+          }else if(timer > 15000 && timer < 20000){
+            //comportamento 3
+            duty_MOTOR = 0.5*256;
+            duty_LED = 0.5*256;
+          }else if(timer > 20000 && timer < 25000){
+            //comportamento 4
+            duty_MOTOR = 0.6*256;
+            duty_LED = 0.3*256;
+          }else if(timer > 25000 && timer < 30000){
+            //comportamento 5
+            duty_MOTOR = 0.9*256;
+            duty_LED = 0.1*256;
+          }else{
+            //finish
+            state = INIT;
+            usart_transmisionString("\nFinish\n");
+          }
+
+          pwm_dutycycle(CHAN_MOTOR, duty_MOTOR);
+          pwm_dutycycle(CHAN_LED, duty_LED);
+
+          usart_transmisionString("Umidade: ");
+          usart_transmision(dht_data[0]/10 + 48);
+          usart_transmision(dht_data[0]%10 + 48);
+          usart_transmisionString("%\t");
+
+          usart_transmisionString("Temperatura: ");
+          usart_transmision(T/10+48);
+          usart_transmision(T%10+48);
+          usart_transmision('C');
+
+          usart_transmisionString("\t\tPWM MOTOR: ");
+          usart_transmision(duty_MOTOR/100+48);
+          usart_transmision( (duty_MOTOR/10)%10 + 48);
+          usart_transmision( duty_MOTOR%10 + 48 );
+
+          usart_transmisionString("\tPWM LED: ");
+          usart_transmision(duty_LED/100 + 48);
+          usart_transmision((duty_LED/10)%10 + 48);
+          usart_transmision(duty_LED%10 + 48);
 
 
-            usart_transmisionString("Umidade: ");
-            usart_transmision(dht_data[0]/10 + 48);
-            usart_transmision(dht_data[0]%10 + 48);
-            usart_transmisionString("%\t");
+          usart_transmisionString("\tTimer: ");
+          usart_transmision( (uint8_t)(timer/1000U)/10 + 48);
+          usart_transmision( (uint8_t)(timer/1000U)%10 + 48);
+          usart_transmisionString("s\n");
 
-            usart_transmisionString("Temperatura: ");
-            usart_transmision(T/10+48);
-            usart_transmision(T%10+48);
-            usart_transmision('\n');
-           }
 
         break;
         default:
@@ -198,7 +238,7 @@ ISR(USART_RX_vect){
     PORTB &= ~(1 << LED_GREEN_B);
     _delay_ms(500);
   }
-  usart_transmisionString("Dado recebido: ");
+  usart_transmisionString((char*)"Dado recebido: ");
   usart_transmision(data);
   usart_transmision('\n');
 }
