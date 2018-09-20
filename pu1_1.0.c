@@ -14,6 +14,9 @@
 #define LED_BLUE_D PB3
 #define BUTTON_D PD2
 #define LED_GREEN_B PB0
+
+#define BETA 1/50.0
+#define ALFA 1/90.0
 // Motor no pino  PB3 (pino 11 do arduino)
 // Led com PWM no pino PD3 (pino 3 do arduino)
 enum {
@@ -32,10 +35,7 @@ uint64_t t_first_edge = 0;
 enum PWM_CHANNEL{
   //Canal por nome
   CHAN_MOTOR = 0b00000001,
-  CHAN_LED   = 1 << 2,
-  //canal por registrador
-  CHAN_OC2A  = 1,      //PD3
-  CHAN_OC2B  = 1 << 2  //PB3
+  CHAN_LED   = 0b00000010,
 };
 
 //Funcoes
@@ -53,30 +53,32 @@ void usart_flush();
 
 void pwm_initialize(){
   // Definir o modo de operação para FastPWM
-  TCCR2A |= (1 << WGM20 | 1 << WGM21);
+  TCCR2A &= ~(1 << WGM22);
+  TCCR2A |= (1 << WGM21 | 1 << WGM20);
 
-  // Definir a fonte do clk (sem prescaler)
-  TCCR2B |= (1 << CS21);
+  // Definir a fonte do clk (clk_i/256) => 16e6/256 = 62.5KHz
+  TCCR2B &= ~(1 << CS20)
+  TCCR2B |= (1 << CS21) | (1 << CS22);
 
   // Definido para 0% do ciclo de trabalho
   OCR2A = 0x00;
   OCR2B = 0x00;
 
-  // 2 saídas do canal PWM
+  //Configura os pinos do PWM como saida
   DDRB |= 1 << PB3; // OC2A
   DDRD |= 1 << PD3; // OC2B
 }
 // Ativar canais PWM
 void pwm_enable (enum PWM_CHANNEL channel) {
-  if (channel & CHAN_OC2A) TCCR2A |= 1 << COM2A1;
-  if (channel & CHAN_OC2B) TCCR2A |= 1 << COM2B1;
+  if (channel & CHAN_MOTOR) TCCR2A |= 1 << COM2A1;
+  if (channel & CHAN_LED) TCCR2A |= 1 << COM2B1;
 }
 // Desativar canais PWM
 void pwm_disable (enum PWM_CHANNEL channel) {
   if (channel & CHAN_OC2A) TCCR2A &= ~(1 << COM2A1);
   if (channel & CHAN_OC2B) TCCR2A &= ~(1 << COM2B1);
 }
-// Define o ciclo de trabalho no canal x
+// Define o ciclo de trabalho no canal PWM_CHANNEL
 void pwm_dutycycle (enum PWM_CHANNEL channel, uint8_t dutycycle){
   if (channel & CHAN_OC2A) OCR2A = dutycycle;
   if (channel & CHAN_OC2B) OCR2B = dutycycle;
@@ -119,17 +121,18 @@ int main(){
   // index 0 => Humidade %, parte inteira
   // index 1 => Humidade %, parte decimal
   uint8_t dht_data[5];
-  dht_data[0] = 99;
   uint64_t start_timer;
   uint64_t timer;
   uint8_t duty_MOTOR = 0, duty_LED = 255;
   uint8_t T;
+  int z;
+  uint8_t U;
+
   while(true){
-    _delay_ms(500);
       switch (state) {
         case INIT:
           duty_MOTOR = 0;
-          duty_LED = 255;
+          duty_LED = 0;
           PORTB &= ~(1 << LED_GREEN_B);
           pwm_dutycycle(CHAN_LED,0);
           pwm_dutycycle(CHAN_MOTOR,0);
@@ -139,63 +142,35 @@ int main(){
           PORTB |= (1 << LED_GREEN_B);
           timer = clock_ms() - start_timer;
           readDHT(dht_data);
+          U = dht_data[0];
           T = readTherm();
+          duty_LED = (U/90.0)*256;
 
           if( timer < 10000){
             //comportamento 1
-            duty_MOTOR = 0.1*256;
-            duty_LED = 0.9*256;
+            z = (3.5/100.0)*(timer/1000.0)*256;
           }else if(timer > 10000 && timer < 15000){
             //comportamento 2
-            duty_MOTOR = 0.4*256;
-            duty_LED = 0.6*256;
+            z = (35/100.0)*256;
           }else if(timer > 15000 && timer < 20000){
             //comportamento 3
-            duty_MOTOR = 0.5*256;
-            duty_LED = 0.5*256;
+            z = ((((65-32)/5.0)/100.0)*(timer/1000.0 - 15) + 35/100.0)*256;
           }else if(timer > 20000 && timer < 25000){
             //comportamento 4
-            duty_MOTOR = 0.6*256;
-            duty_LED = 0.3*256;
-          }else if(timer > 25000 && timer < 30000){
+            z = (65/100.0)*256;
+          }else if(timer > 25000 && timer <= 30000){
             //comportamento 5
-            duty_MOTOR = 0.9*256;
-            duty_LED = 0.1*256;
+            z = (((-65.0/5)/100.0)*(timer/1000.0 - 25) + 65/100.0)*256;
           }else{
             //finish
             state = INIT;
-            usart_transmisionString("\nFinish\n");
           }
 
+          duty_MOTOR = z*U*ALFA + BETA*T;
           pwm_dutycycle(CHAN_MOTOR, duty_MOTOR);
           pwm_dutycycle(CHAN_LED, duty_LED);
 
-          usart_transmisionString("Umidade: ");
-          usart_transmision(dht_data[0]/10 + 48);
-          usart_transmision(dht_data[0]%10 + 48);
-          usart_transmisionString("%\t");
-
-          usart_transmisionString("Temperatura: ");
-          usart_transmision(T/10+48);
-          usart_transmision(T%10+48);
-          usart_transmision('C');
-
-          usart_transmisionString("\t\tPWM MOTOR: ");
-          usart_transmision(duty_MOTOR/100+48);
-          usart_transmision( (duty_MOTOR/10)%10 + 48);
-          usart_transmision( duty_MOTOR%10 + 48 );
-
-          usart_transmisionString("\tPWM LED: ");
-          usart_transmision(duty_LED/100 + 48);
-          usart_transmision((duty_LED/10)%10 + 48);
-          usart_transmision(duty_LED%10 + 48);
-
-
-          usart_transmisionString("\tTimer: ");
-          usart_transmision( (uint8_t)(timer/1000U)/10 + 48);
-          usart_transmision( (uint8_t)(timer/1000U)%10 + 48);
-          usart_transmisionString("s\n");
-
+          usart_transmision(duty_MOTOR);
 
         break;
         default:
@@ -216,7 +191,7 @@ ISR(INT0_vect){
    bounce_aux = false;
   }
   else{
-    if((clock_ms() - t_first_edge) > 100){//Teste se houve 100ms de diferenca a interrupcao atual e a primeira
+    if((clock_ms() - t_first_edge) > 100){//Teste se houve 100ms de diferenca entre interrupcao atual e a ultima
       bounce_aux = true;
       state = (state == INIT)?CTRL:INIT;
     }
@@ -238,9 +213,6 @@ ISR(USART_RX_vect){
     PORTB &= ~(1 << LED_GREEN_B);
     _delay_ms(500);
   }
-  usart_transmisionString((char*)"Dado recebido: ");
-  usart_transmision(data);
-  usart_transmision('\n');
 }
 ISR(USART_TX_vect){//interrupcao: transmissao completa
 
@@ -304,6 +276,8 @@ bool readDHT(uint8_t data[]){
   return true;
 }
 void usart_initialize(){
+  //habilita a comunicacao USART
+  //habilita entrada (Rx) e saida(Tx)
   UCSR0B = (1<<RXEN0)|(1<<TXEN0);
   UCSR0C = (3<<UCSZ00);
 
@@ -322,16 +296,20 @@ void usart_transmisionString(uint8_t *data){
     data++;
   }
 }
+//Coloca um byte no buffer de saida de dado
 void usart_transmision(uint8_t data){
-  //limpar flag de finalizao de transmissao
+  //Aguarda a ultima transmissao ser concluida
   while( !(UCSR0A & (1<<UDRE0)));
+  //coloca o byte no buffer
   UDR0 = data;
 }
+//Aguarda a recepcao ser concluida
 uint8_t usart_reception(){
-  //aguardar buffer ser preenchido com o dado de entrada
+  //aguardar buffer a finalizacao da recepcao
   while ( !(UCSR0A & (1 << RXC0)) );
   return UDR0;
 }
+//Limpa o buffer de entrada de dados
 void usart_flush(){
   uint8_t trash;
   while ( (UCSR0A & (1<<RXC0))) trash = UDR0;
