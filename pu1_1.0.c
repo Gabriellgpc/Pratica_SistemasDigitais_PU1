@@ -90,8 +90,8 @@ void setup(){
   DDRC |= 1 << DHT_PIN;
 
 
-  PORTC|= !(1 << DHT_PIN);
-  PORTB&= !(1 << LED_GREEN_B);
+  PORTC|= !(1 << DHT_PIN);      //coloca DHT_PIN para nivel alto
+  PORTB&= !(1 << LED_GREEN_B);  //pino LED_GREEN_B para nivel baixo
 
 
   //configura interrupcao para borda de descida no BUTTON_D
