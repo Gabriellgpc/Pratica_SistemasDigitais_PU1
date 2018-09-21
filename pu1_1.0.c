@@ -11,9 +11,10 @@
 #define THERMISTOR PC1   //A1
 
 #define LED_YELLOW_D PD3
-#define LED_BLUE_D PB3
+#define LED_BLUE_B PB3
 #define BUTTON_D PD2
 #define LED_GREEN_B PB0
+#define MOTOR LED_BLUE_B //A saida para do LED e do MOTOR eh a mesma
 
 #define BETA 1/50.0
 #define ALFA 1/90.0
@@ -65,8 +66,8 @@ void pwm_initialize(){
   OCR2B = 0x00;
 
   //Configura os pinos do PWM como saida
-  DDRB |= 1 << PB3; // OC2A
-  DDRD |= 1 << PD3; // OC2B
+  DDRB |= 1 << LED_BLUE_B; // OC2A
+  DDRD |= 1 << LED_YELLOW_D; // OC2B
 }
 // Ativar canais PWM
 void pwm_enable (enum PWM_CHANNEL channel) {
