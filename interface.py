@@ -35,8 +35,6 @@ print(str("serialArduino.isOpen() = ") + str(serialArduino.isOpen()))
 for i in range(0,30):
     values.append(0)
 
-# serialArduino.flushInput()
-
 serialArduino.write(b'0x01')
 serialArduino.flushOutput()
 while True:
@@ -44,9 +42,7 @@ while True:
         pass
     valueRead = serialArduino.read()
     serialArduino.flushInput()
-    #check if valid value can be casted
-    # try:
-    # print("Dado recebido", str(valueRead))
+
 
     valueInInt = int.from_bytes(valueRead,byteorder='little')
     if valueInInt <= 255:
@@ -54,13 +50,11 @@ while True:
             values.append(valueInInt)
             values.pop(0)
             drawnow(plotValues)
-            # print("Plotei")
+
         else:
             print("Invalid! negative number")
     else:
         print("Invalid! too large")
-    # except ValueError:
-    #     print("Invalid! cannot cast")
-        # serialArduino.close()
+
 serialArduino.flush()
 serialArduino.close()
