@@ -207,16 +207,7 @@ ISR(USART_RX_vect){
   uint8_t data = usart_reception();
   usart_flush();
   if(data == '1')state = CTRL;
-  else if(data == '0')state = INIT;
-  else {
-    PORTB |=  (1 << LED_GREEN_B);
-    _delay_ms(500);
-    PORTB &= ~(1 << LED_GREEN_B);
-    _delay_ms(500);
-  }
-}
-ISR(USART_TX_vect){//interrupcao: transmissao completa
-
+  if(data == '0')state = INIT;
 }
 
 uint64_t clock_ms(){ return timer_ms; }
