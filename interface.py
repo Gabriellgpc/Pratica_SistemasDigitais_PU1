@@ -32,7 +32,7 @@ atexit.register(doAtExit)
 print(str("serialArduino.isOpen() = ") + str(serialArduino.isOpen()))
 
 #pre-load dummy data
-for i in range(0,30):
+for i in range(0,200):
     values.append(0)
 
 serialArduino.write(b'0x01')

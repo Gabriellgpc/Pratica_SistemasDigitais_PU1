@@ -58,7 +58,7 @@ void pwm_initialize(){
   TCCR2A |= (1 << WGM21 | 1 << WGM20);
 
   // Definir a fonte do clk (clk_i/256) => 16e6/256 = 62.5KHz
-  TCCR2B &= ~(1 << CS20)
+  TCCR2B &= ~(1 << CS20);
   TCCR2B |= (1 << CS21) | (1 << CS22);
 
   // Definido para 0% do ciclo de trabalho
@@ -76,13 +76,13 @@ void pwm_enable (enum PWM_CHANNEL channel) {
 }
 // Desativar canais PWM
 void pwm_disable (enum PWM_CHANNEL channel) {
-  if (channel & CHAN_OC2A) TCCR2A &= ~(1 << COM2A1);
-  if (channel & CHAN_OC2B) TCCR2A &= ~(1 << COM2B1);
+  if (channel & CHAN_MOTOR) TCCR2A &= ~(1 << COM2A1);
+  if (channel & CHAN_LED) TCCR2A &= ~(1 << COM2B1);
 }
 // Define o ciclo de trabalho no canal PWM_CHANNEL
 void pwm_dutycycle (enum PWM_CHANNEL channel, uint8_t dutycycle){
-  if (channel & CHAN_OC2A) OCR2A = dutycycle;
-  if (channel & CHAN_OC2B) OCR2B = dutycycle;
+  if (channel & CHAN_MOTOR) OCR2A = dutycycle;
+  if (channel & CHAN_LED) OCR2B = dutycycle;
 }
 
 void setup(){
